@@ -1,0 +1,65 @@
+# Zero-Day Network Attack Detection Configuration
+
+# Detection Parameters
+detection_threshold: 0.5
+
+# Model Weights for Ensemble Voting
+model_weights:
+  isolation_forest: 0.25
+  autoencoder: 0.25
+  random_forest: 0.25
+  xgboost: 0.25
+
+# Isolation Forest Configuration
+isolation_forest:
+  contamination: 0.1
+  n_estimators: 100
+  max_samples: 256
+  random_state: 42
+
+# Autoencoder Configuration
+autoencoder:
+  encoding_dim: 3
+  epochs: 50
+  batch_size: 32
+  validation_split: 0.2
+
+# Random Forest Configuration
+random_forest:
+  n_estimators: 100
+  max_depth: 20
+  random_state: 42
+
+# XGBoost Configuration
+xgboost:
+  n_estimators: 100
+  max_depth: 6
+  learning_rate: 0.1
+  random_state: 42
+
+# Model Paths
+model_paths:
+  isolation_forest: "./models/isolation_forest.joblib"
+  autoencoder: "./models/autoencoder.h5"
+  random_forest: "./models/random_forest.joblib"
+  xgboost: "./models/xgboost.joblib"
+  scaler: "./models/scaler.joblib"
+  encoder: "./models/encoder.joblib"
+
+# Training Configuration
+training:
+  max_epochs: 100
+  convergence_threshold: 0.001
+
+# Performance Configuration
+performance:
+  max_throughput: 1500
+  target_throughput: 1000
+  latency_threshold_ms: 2000
+  concurrent_samples: 100
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "json"
+  metrics_enabled: true
