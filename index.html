@@ -1,1 +1,991 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Zero-Day Attack Detection</title>
+    <style>
+      :root {
+        --bg-1: #040b16;
+        --bg-2: #071a2b;
+        --bg-3: #0d243a;
+        --panel: rgba(12, 24, 38, 0.78);
+        --panel-strong: rgba(14, 29, 47, 0.92);
+        --panel-soft: rgba(19, 39, 58, 0.8);
+        --primary: #5cc8ff;
+        --primary-2: #3d8dff;
+        --cyan: #79f2ff;
+        --teal: #58f0c8;
+        --success: #21d07a;
+        --warning: #ffbf5f;
+        --danger: #ff5d5d;
+        --muted: #8da3bd;
+        --text: #e8f5ff;
+        --text-strong: #ffffff;
+        --line: rgba(121, 242, 255, 0.2);
+        --glow: 0 0 18px rgba(92, 200, 255, 0.42);
+        --shadow: 0 20px 42px rgba(1, 9, 18, 0.56);
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        font-family: Inter, "Segoe UI", Tahoma, sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(92, 200, 255, 0.14), transparent 24%),
+          radial-gradient(circle at top right, rgba(88, 240, 200, 0.11), transparent 20%),
+          radial-gradient(circle at bottom left, rgba(61, 141, 255, 0.15), transparent 25%),
+          linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 35%, var(--bg-3) 100%);
+        color: var(--text);
+      }
+
+      body {
+        min-height: 100vh;
+        position: relative;
+        overflow-x: hidden;
+      }
+
+      body::before,
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      body::before {
+        background:
+          linear-gradient(rgba(92,200,255,0.10) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(92,200,255,0.10) 1px, transparent 1px);
+        background-size: 44px 44px;
+        mask-image: radial-gradient(circle at center, black 35%, transparent 100%);
+      }
+
+      body::after {
+        background: linear-gradient(180deg, transparent, rgba(92, 200, 255, 0.08), transparent);
+        animation: scanline 10s linear infinite;
+      }
+
+      .network-bg {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+        overflow: hidden;
+        opacity: 0.95;
+      }
+
+      .network-bg .circuit {
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(90deg, transparent 0%, rgba(92,200,255,0.06) 16%, transparent 32%),
+          linear-gradient(0deg, transparent 0%, rgba(88,240,200,0.05) 18%, transparent 35%);
+      }
+
+      .network-bg .node {
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: rgba(121, 242, 255, 0.95);
+        box-shadow: 0 0 12px rgba(121, 242, 255, 0.8), 0 0 20px rgba(121, 242, 255, 0.5);
+        animation: nodePulse 2.8s ease-in-out infinite;
+      }
+
+      .network-bg .node::after {
+        content: "";
+        position: absolute;
+        inset: -8px;
+        border: 1px solid rgba(121, 242, 255, 0.25);
+        border-radius: 50%;
+      }
+
+      .network-bg .trace {
+        position: absolute;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(92,200,255,0.9), rgba(88,240,200,0.9), transparent);
+        box-shadow: 0 0 12px rgba(92,200,255,0.4);
+        border-radius: 999px;
+        transform-origin: left center;
+      }
+
+      .network-bg .trace.vertical {
+        width: 2px;
+        height: 110px;
+        background: linear-gradient(180deg, transparent, rgba(92,200,255,0.9), rgba(88,240,200,0.9), transparent);
+        box-shadow: 0 0 12px rgba(92,200,255,0.3);
+      }
+
+      @keyframes scanline {
+        0% { transform: translateY(-100%); opacity: 0; }
+        20% { opacity: 0.6; }
+        100% { transform: translateY(100%); opacity: 0; }
+      }
+
+      @keyframes drift {
+        0% { transform: translate3d(0, 0, 0) scale(1); }
+        50% { transform: translate3d(12px, -10px, 0) scale(1.02); }
+        100% { transform: translate3d(0, 0, 0) scale(1); }
+      }
+
+      @keyframes blink {
+        0%, 100% { opacity: 0.48; }
+        50% { opacity: 1; }
+      }
+
+      @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+      }
+
+      @keyframes floatNode {
+        0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.5; }
+        50% { transform: translate3d(20px, -16px, 0) scale(1.4); opacity: 1; }
+      }
+
+      @keyframes lineFlow {
+        0% { transform: translateX(-100%) scaleX(0.4); opacity: 0; }
+        15% { opacity: 1; }
+        50% { transform: translateX(60vw) scaleX(1); opacity: 1; }
+        100% { transform: translateX(120vw) scaleX(0.5); opacity: 0; }
+      }
+
+      @keyframes nodePulse {
+        0%, 100% { transform: scale(1); opacity: 0.7; }
+        50% { transform: scale(1.35); opacity: 1; }
+      }
+
+      @keyframes pulseGlow {
+        0%, 100% { box-shadow: 0 0 0 rgba(92,200,255,0.12), inset 0 0 10px rgba(92,200,255,0.04); }
+        50% { box-shadow: 0 0 20px rgba(92,200,255,0.22), inset 0 0 18px rgba(92,200,255,0.08); }
+      }
+
+      .dashboard {
+        position: relative;
+        max-width: 1480px;
+        margin: 0 auto;
+        padding: 28px 22px 56px;
+      }
+
+      .dashboard::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at center, rgba(92, 200, 255, 0.08), transparent 55%);
+        pointer-events: none;
+      }
+
+      .topbar {
+        position: relative;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 18px;
+        padding: 10px 10px 26px;
+        z-index: 1;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .logo {
+        width: 58px;
+        height: 58px;
+        border-radius: 18px;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(135deg, rgba(92,200,255,0.28), rgba(61,141,255,0.85));
+        border: 1px solid rgba(121, 242, 255, 0.4);
+        box-shadow: var(--glow), inset 0 0 18px rgba(255,255,255,0.2);
+        font-size: 1.9rem;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.9rem, 2.6vw, 3rem);
+        letter-spacing: -0.06em;
+        color: var(--text-strong);
+        text-shadow: 0 0 12px rgba(92, 200, 255, 0.25);
+      }
+
+      .top-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .live-pill, .action-btn, .mini-select {
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        font: inherit;
+      }
+
+      .live-pill {
+        background: rgba(33, 208, 122, 0.12);
+        color: var(--teal);
+        font-weight: 500;
+        padding: 10px 14px;
+        border-color: rgba(33, 208, 122, 0.32);
+        box-shadow: 0 0 16px rgba(33, 208, 122, 0.18);
+      }
+
+      .action-btn {
+        border: 1px solid rgba(121, 242, 255, 0.36);
+        background: linear-gradient(135deg, rgba(92,200,255,0.16), rgba(61,141,255,0.32));
+        color: var(--text-strong);
+        padding: 10px 16px;
+        font-weight: 500;
+        cursor: pointer;
+        box-shadow: var(--glow);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .action-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 0 20px rgba(92, 200, 255, 0.5);
+      }
+
+      .mini-select {
+        background: rgba(13, 27, 42, 0.85);
+        color: var(--text);
+        padding: 10px 12px;
+        border-color: var(--line);
+      }
+
+      .layout {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        grid-template-columns: 310px 1fr;
+        gap: 22px;
+      }
+
+      .sidebar, .main {
+        display: flex;
+        flex-direction: column;
+        gap: 22px;
+      }
+
+      .panel {
+        position: relative;
+        background: linear-gradient(180deg, rgba(9, 19, 31, 0.88), rgba(12, 24, 38, 0.8));
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        box-shadow: var(--shadow), inset 0 0 20px rgba(92, 200, 255, 0.06);
+        padding: 18px 18px 16px;
+        overflow: hidden;
+      }
+
+      .panel::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto auto 0;
+        width: 100%;
+        height: 2px;
+        background: linear-gradient(90deg, rgba(92,200,255,0), rgba(92,200,255,0.8), rgba(92,200,255,0));
+      }
+
+      .panel h2, .panel h3 {
+        margin: 0 0 14px;
+        color: var(--text-strong);
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+
+      .filters {
+        display: grid;
+        gap: 14px;
+      }
+
+      .field {
+        display: grid;
+        gap: 8px;
+      }
+
+      .field label {
+        color: var(--muted);
+        font-size: 0.8rem;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .field select {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: rgba(11, 24, 34, 0.96);
+        padding: 11px 12px;
+        font: inherit;
+        color: var(--text);
+        box-shadow: inset 0 0 12px rgba(92, 200, 255, 0.04);
+      }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(160px, 1fr));
+        gap: 16px;
+      }
+
+      .metric {
+        position: relative;
+        background: linear-gradient(180deg, rgba(10, 25, 39, 0.95), rgba(15, 31, 50, 0.9));
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 18px 16px 14px;
+        min-height: 138px;
+        box-shadow: inset 0 0 12px rgba(92, 200, 255, 0.08);
+        overflow: hidden;
+      }
+
+      .metric::after {
+        content: "";
+        position: absolute;
+        inset: auto 0 0 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, rgba(92, 200, 255, 0.7), transparent);
+      }
+
+      .metric .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: var(--muted);
+        font-size: 0.76rem;
+        font-weight: 500;
+        margin-bottom: 18px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .metric .value {
+        font-size: clamp(1.7rem, 2.1vw, 2.5rem);
+        font-weight: 600;
+        color: var(--text-strong);
+        letter-spacing: -0.05em;
+      }
+
+      .metric .delta {
+        margin-top: 8px;
+        font-size: 0.8rem;
+        font-weight: 500;
+      }
+
+      .metric.success .delta { color: var(--teal); }
+      .metric.warning .delta { color: var(--warning); }
+      .metric.danger .delta { color: var(--danger); }
+
+      .content-grid {
+        display: grid;
+        grid-template-columns: 1.35fr 0.85fr;
+        gap: 22px;
+      }
+
+      .alert-box {
+        display: grid;
+        gap: 12px;
+      }
+
+      .alert-item {
+        display: grid;
+        grid-template-columns: 18px 1fr auto;
+        gap: 14px;
+        align-items: center;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(10, 25, 39, 0.96), rgba(14, 27, 41, 0.8));
+        border-left: 6px solid var(--danger);
+        padding: 14px 14px;
+        box-shadow: inset 0 0 12px rgba(255,255,255,0.02);
+      }
+
+      .alert-item.normal {
+        border-left-color: var(--success);
+      }
+
+      .alert-item .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--danger);
+        box-shadow: 0 0 0 4px rgba(255, 93, 93, 0.14), 0 0 18px rgba(255, 93, 93, 0.5);
+      }
+
+      .alert-item.normal .dot {
+        background: var(--success);
+        box-shadow: 0 0 0 4px rgba(33, 208, 122, 0.12), 0 0 18px rgba(33, 208, 122, 0.5);
+      }
+
+      .alert-item .title {
+        font-size: 0.98rem;
+        font-weight: 600;
+        color: var(--text-strong);
+      }
+
+      .alert-item .meta {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+
+      .confidence {
+        color: var(--primary);
+        font-weight: 600;
+        font-size: 0.96rem;
+        text-shadow: 0 0 10px rgba(92,200,255,0.4);
+      }
+
+      .mini-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
+        gap: 14px;
+      }
+
+      .mini-box {
+        background: linear-gradient(180deg, rgba(16, 35, 52, 0.9), rgba(12, 24, 38, 0.9));
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px 14px;
+        box-shadow: inset 0 0 18px rgba(92, 200, 255, 0.05);
+      }
+
+      .mini-box .label {
+        font-size: 0.76rem;
+        color: var(--muted);
+        font-weight: 500;
+        margin-bottom: 8px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .mini-box .no {
+        font-size: 1.7rem;
+        font-weight: 600;
+        color: var(--text-strong);
+        letter-spacing: -0.05em;
+      }
+
+      .bars {
+        display: grid;
+        gap: 14px;
+      }
+
+      .bar-row {
+        display: grid;
+        grid-template-columns: 64px 1fr 44px;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .bar-label {
+        color: var(--muted);
+        font-size: 0.8rem;
+        font-weight: 500;
+      }
+
+      .bar-track {
+        position: relative;
+        height: 12px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(92, 200, 255, 0.08);
+        box-shadow: inset 0 0 10px rgba(92, 200, 255, 0.11);
+      }
+
+      .bar-fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--primary), #86b7ff);
+        box-shadow: 0 0 12px rgba(92, 200, 255, 0.35);
+      }
+
+      .bar-fill.danger { background: linear-gradient(90deg, #ff5d5d, #ff9f9f); }
+      .bar-fill.warning { background: linear-gradient(90deg, #ffbf5f, #ffe29f); }
+      .bar-fill.success { background: linear-gradient(90deg, #21d07a, #9af7c9); }
+
+      .chart-card {
+        margin-top: 10px;
+        border-radius: 18px;
+        background: linear-gradient(180deg, rgba(13, 28, 42, 0.9), rgba(15, 31, 50, 0.85));
+        border: 1px solid var(--line);
+        padding: 14px;
+        box-shadow: inset 0 0 20px rgba(92, 200, 255, 0.06);
+      }
+
+      svg {
+        width: 100%;
+        height: 190px;
+        display: block;
+      }
+
+      .timeline {
+        display: grid;
+        gap: 14px;
+      }
+
+      .timeline-item {
+        display: grid;
+        grid-template-columns: 16px 1fr;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .timeline-item .bullet {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--primary);
+        border: 4px solid rgba(92,200,255,0.18);
+        margin-top: 4px;
+        box-shadow: 0 0 16px rgba(92, 200, 255, 0.32);
+      }
+
+      .timeline-item:nth-child(2) .bullet { background: var(--warning); border-color: rgba(255,191,95,0.2); box-shadow: 0 0 16px rgba(255,191,95,0.28); }
+      .timeline-item:nth-child(3) .bullet { background: var(--danger); border-color: rgba(255,93,93,0.2); box-shadow: 0 0 16px rgba(255,93,93,0.3); }
+      .timeline-item:nth-child(4) .bullet { background: var(--success); border-color: rgba(33,208,122,0.2); box-shadow: 0 0 16px rgba(33,208,122,0.24); }
+
+      .timeline-item .txt {
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 8px;
+      }
+
+      .timeline-item .txt strong {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--text-strong);
+      }
+
+      .timeline-item .txt span {
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+
+      @keyframes pulseGlow {
+        0%, 100% { box-shadow: 0 0 0 rgba(92,200,255,0.14); }
+        50% { box-shadow: 0 0 20px rgba(92,200,255,0.26); }
+      }
+
+      .metric, .panel, .alert-item, .mini-box {
+        animation: pulseGlow 4s ease-in-out infinite;
+        transition: transform 0.35s ease, box-shadow 0.35s ease, border-color 0.35s ease, filter 0.35s ease;
+      }
+
+      .metric:hover, .panel:hover, .alert-item:hover, .mini-box:hover {
+        transform: translateY(-3px) scale(1.01);
+        border-color: rgba(121, 242, 255, 0.38);
+        box-shadow: 0 0 26px rgba(92, 200, 255, 0.18), inset 0 0 18px rgba(92, 200, 255, 0.05);
+      }
+
+      .live-pill {
+        position: relative;
+        overflow: hidden;
+      }
+
+      .live-pill::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent);
+        transform: translateX(-120%);
+        animation: shimmer 2.8s linear infinite;
+      }
+
+      .action-btn {
+        position: relative;
+        overflow: hidden;
+      }
+
+      .action-btn::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(120deg, transparent 20%, rgba(255,255,255,0.32) 50%, transparent 80%);
+        transform: translateX(-120%);
+        animation: shimmer 3.2s linear infinite;
+      }
+
+      .logo {
+        animation: drift 5s ease-in-out infinite;
+      }
+
+      .metric .value,
+      .mini-box .no {
+        transition: transform 0.3s ease, color 0.3s ease;
+      }
+
+      .metric.flash {
+        animation: pulseGlow 1.2s ease-in-out 1;
+      }
+
+      @media (max-width: 1080px) {
+        .layout, .content-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .stats-grid {
+          grid-template-columns: repeat(2, minmax(150px, 1fr));
+        }
+      }
+
+      @media (max-width: 640px) {
+        .topbar {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .stats-grid, .mini-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="network-bg" aria-hidden="true">
+      <div class="circuit"></div>
+      <span class="trace" style="left:10%; top:22%; width: 22vw; transform: rotate(12deg);"></span>
+      <span class="trace" style="left:26%; top:62%; width: 25vw; transform: rotate(-16deg);"></span>
+      <span class="trace" style="left:48%; top:30%; width: 26vw; transform: rotate(20deg);"></span>
+      <span class="trace" style="left:62%; top:72%; width: 20vw; transform: rotate(-10deg);"></span>
+      <span class="trace vertical" style="left:18%; top:20%;"></span>
+      <span class="trace vertical" style="left:42%; top:34%; height: 150px;"></span>
+      <span class="trace vertical" style="left:74%; top:16%; height: 170px;"></span>
+      <span class="node" style="left:18%; top:20%;"></span>
+      <span class="node" style="left:42%; top:34%;"></span>
+      <span class="node" style="left:74%; top:16%;"></span>
+      <span class="node" style="left:56%; top:72%;"></span>
+      <span class="node" style="left:82%; top:52%;"></span>
+      <span class="node" style="left:32%; top:62%;"></span>
+      <span class="node" style="left:63%; top:30%;"></span>
+    </div>
+    <div class="dashboard">
+      <header class="topbar">
+        <div class="brand">
+          <div class="logo">🛡️</div>
+          <h1>Zero-Day Attack Detection</h1>
+        </div>
+
+        <div class="top-actions">
+          <div class="live-pill">System Online</div>
+          <select class="mini-select" aria-label="Time range">
+            <option>Last 24 Hours</option>
+            <option>Last 7 Days</option>
+            <option>Custom Range</option>
+          </select>
+          <button class="action-btn" id="refreshBtn">Refresh Feed</button>
+        </div>
+      </header>
+
+      <div class="layout">
+        <aside class="sidebar">
+          <div class="panel">
+            <h2>Filters</h2>
+            <div class="filters">
+              <div class="field">
+                <label for="threshold">Detection Threshold</label>
+                <select id="threshold">
+                  <option>0.40</option>
+                  <option selected>0.50</option>
+                  <option>0.60</option>
+                  <option>0.75</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="range">Time Range</label>
+                <select id="range">
+                  <option>Last 1 Hour</option>
+                  <option selected>Last 24 Hours</option>
+                  <option>Last 7 Days</option>
+                  <option>Custom</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="type">Attack Type</label>
+                <select id="type">
+                  <option selected>All</option>
+                  <option>DoS</option>
+                  <option>Probe</option>
+                  <option>R2L</option>
+                  <option>U2R</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>System Health</h3>
+            <div class="mini-grid">
+              <div class="mini-box">
+                <div class="label">Model</div>
+                <div class="no">Ensemble</div>
+              </div>
+              <div class="mini-box">
+                <div class="label">Latency</div>
+                <div class="no">126ms</div>
+              </div>
+              <div class="mini-box">
+                <div class="label">Status</div>
+                <div class="no" style="color: var(--success);">Healthy</div>
+              </div>
+              <div class="mini-box">
+                <div class="label">Window</div>
+                <div class="no">24h</div>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        <main class="main">
+          <section class="stats-grid">
+            <div class="metric success">
+              <div class="header"><span>Total Detections</span><span>📊</span></div>
+              <div class="value" id="totalDetections">1,284</div>
+              <div class="delta">+12.4% vs last cycle</div>
+            </div>
+
+            <div class="metric danger">
+              <div class="header"><span>Attack Detections</span><span>🚨</span></div>
+              <div class="value" id="attackDetections">318</div>
+              <div class="delta">+9 alerts this hour</div>
+            </div>
+
+            <div class="metric warning">
+              <div class="header"><span>Detection Rate</span><span>⚡</span></div>
+              <div class="value" id="detectionRate">22.6/min</div>
+              <div class="delta">Peak window at 02:10</div>
+            </div>
+
+            <div class="metric success">
+              <div class="header"><span>Latency</span><span>⏱️</span></div>
+              <div class="value" id="latency">126ms</div>
+              <div class="delta">Within SLA target</div>
+            </div>
+          </section>
+
+          <section class="content-grid">
+            <div class="panel">
+              <h2>Real-Time Alerts</h2>
+              <div class="alert-box" id="alertList"></div>
+            </div>
+
+            <div class="panel">
+              <h2>Attack Distribution</h2>
+              <div class="bars" id="distributionBars"></div>
+            </div>
+          </section>
+
+          <section class="content-grid">
+            <div class="panel">
+              <h2>Detection Trend</h2>
+              <div class="chart-card">
+                <svg viewBox="0 0 520 190" preserveAspectRatio="none" aria-label="Traffic trend chart">
+                  <defs>
+                    <linearGradient id="lineFill" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stop-color="#2c7be5" stop-opacity="0.35"/>
+                      <stop offset="100%" stop-color="#2c7be5" stop-opacity="0"/>
+                    </linearGradient>
+                  </defs>
+                  <g stroke="rgba(15,23,42,0.10)" stroke-width="1">
+                    <line x1="0" y1="30" x2="520" y2="30"/>
+                    <line x1="0" y1="76" x2="520" y2="76"/>
+                    <line x1="0" y1="122" x2="520" y2="122"/>
+                    <line x1="0" y1="168" x2="520" y2="168"/>
+                  </g>
+                  <path d="M0,165 L52,152 L100,138 L150,146 L198,124 L246,132 L298,102 L350,118 L402,86 L452,58 L520,20 L520,190 L0,190 Z" fill="url(#lineFill)" opacity="0.9"></path>
+                  <path d="M0,165 L52,152 L100,138 L150,146 L198,124 L246,132 L298,102 L350,118 L402,86 L452,58 L520,20" fill="none" stroke="#1f6feb" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h2>Threat Summary</h2>
+              <div class="mini-grid">
+                <div class="mini-box">
+                  <div class="label">High Risk</div>
+                  <div class="no" style="color: var(--danger);">7</div>
+                </div>
+                <div class="mini-box">
+                  <div class="label">Investigated</div>
+                  <div class="no" style="color: var(--warning);">18</div>
+                </div>
+                <div class="mini-box">
+                  <div class="label">Blocked</div>
+                  <div class="no" style="color: var(--success);">91%</div>
+                </div>
+                <div class="mini-box">
+                  <div class="label">Confidence</div>
+                  <div class="no">0.94</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="content-grid">
+            <div class="panel">
+              <h2>Recent Activity</h2>
+              <div class="timeline" id="timeline"></div>
+            </div>
+
+            <div class="panel">
+              <h2>Security Notes</h2>
+              <div class="alert-box">
+                <div class="alert-item normal">
+                  <div class="dot"></div>
+                  <div>
+                    <div class="title">Baseline traffic restored</div>
+                    <div class="meta">Normal behavior detected after mitigation</div>
+                  </div>
+                  <div class="confidence">98%</div>
+                </div>
+                <div class="alert-item">
+                  <div class="dot"></div>
+                  <div>
+                    <div class="title">Mitigation action triggered</div>
+                    <div class="meta">Firewall policy updated for flagged subnet</div>
+                  </div>
+                  <div class="confidence">93%</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script>
+      const alertData = [
+        { title: 'DoS spike detected', type: 'Attack', confidence: '96%', time: '02:16 AM', normal: false },
+        { title: 'Probe sweep from external subnet', type: 'Probe', confidence: '89%', time: '02:08 AM', normal: false },
+        { title: 'Unexpected remote login attempt', type: 'R2L', confidence: '92%', time: '01:54 AM', normal: false },
+        { title: 'User privilege escalation pattern', type: 'U2R', confidence: '87%', time: '01:33 AM', normal: false },
+        { title: 'Baseline traffic restored', type: 'Normal', confidence: '98%', time: '01:12 AM', normal: true }
+      ];
+
+      const distribution = [
+        { label: 'DoS', value: 48, css: 'danger' },
+        { label: 'Probe', value: 26, css: 'warning' },
+        { label: 'R2L', value: 18, css: 'warning' },
+        { label: 'U2R', value: 8, css: 'success' }
+      ];
+
+      const timeline = [
+        { title: 'Isolation forest anomaly raised', time: '02:16 AM' },
+        { title: 'Autoencoder reconstruction error increased', time: '02:08 AM' },
+        { title: 'Random forest confidence crossed threshold', time: '01:58 AM' },
+        { title: 'Threat feed synchronized and quarantined', time: '01:42 AM' }
+      ];
+
+      const renderAlerts = () => {
+        const container = document.getElementById('alertList');
+        container.innerHTML = alertData
+          .map(item => `
+            <div class="alert-item ${item.normal ? 'normal' : ''}">
+              <div class="dot"></div>
+              <div>
+                <div class="title">${item.title}</div>
+                <div class="meta">${item.type} • ${item.time}</div>
+              </div>
+              <div class="confidence">${item.confidence}</div>
+            </div>
+          `)
+          .join('');
+      };
+
+      const renderDistribution = () => {
+        const container = document.getElementById('distributionBars');
+        container.innerHTML = distribution
+          .map(item => `
+            <div class="bar-row">
+              <div class="bar-label">${item.label}</div>
+              <div class="bar-track">
+                <div class="bar-fill ${item.css}" style="width: ${item.value}%"></div>
+              </div>
+              <div class="bar-label" style="text-align:right;">${item.value}%</div>
+            </div>
+          `)
+          .join('');
+      };
+
+      const renderTimeline = () => {
+        const container = document.getElementById('timeline');
+        container.innerHTML = timeline
+          .map(item => `
+            <div class="timeline-item">
+              <div class="bullet"></div>
+              <div class="txt">
+                <strong>${item.title}</strong>
+                <span>${item.time}</span>
+              </div>
+            </div>
+          `)
+          .join('');
+      };
+
+      const metricsState = {
+        total: 1284,
+        attacks: 318,
+        rate: 22.6,
+        latency: 126
+      };
+
+      const animateMetric = (id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.remove('flash');
+        void el.offsetWidth;
+        el.classList.add('flash');
+        el.animate(
+          [{ transform: 'scale(1)' }, { transform: 'scale(1.08)' }, { transform: 'scale(1)' }],
+          { duration: 480, easing: 'ease-out' }
+        );
+      };
+
+      const updateMetrics = () => {
+        metricsState.total += Math.floor(Math.random() * 8);
+        metricsState.attacks += Math.random() > 0.6 ? 1 : 0;
+        metricsState.rate = Number((10 + Math.random() * 18).toFixed(1));
+        metricsState.latency = Math.min(220, Math.max(88, Math.round(110 + Math.random() * 52)));
+
+        document.getElementById('totalDetections').textContent = metricsState.total.toLocaleString();
+        document.getElementById('attackDetections').textContent = metricsState.attacks.toString();
+        document.getElementById('detectionRate').textContent = `${metricsState.rate.toFixed(1)}/min`;
+        document.getElementById('latency').textContent = `${metricsState.latency}ms`;
+
+        ['totalDetections', 'attackDetections', 'detectionRate', 'latency'].forEach(animateMetric);
+      };
+
+      document.getElementById('refreshBtn').addEventListener('click', () => {
+        const cycle = [
+          () => alertData.unshift({ ...alertData[0], title: 'Threat feed refreshed', confidence: '97%', time: 'Now' }),
+          () => alertData.push({ title: 'Anomaly cluster confirmed', type: 'DoS', confidence: '94%', time: 'Now', normal: false }),
+        ];
+
+        cycle[Math.floor(Math.random() * cycle.length)]();
+        alertData.splice(5);
+        renderAlerts();
+        updateMetrics();
+      });
+
+      setInterval(() => {
+        const next = alertData.shift();
+        if (next) alertData.push(next);
+        renderAlerts();
+        updateMetrics();
+      }, 3200);
+
+      renderAlerts();
+      renderDistribution();
+      renderTimeline();
+      updateMetrics();
+    </script>
+  </body>
+</html>
 
